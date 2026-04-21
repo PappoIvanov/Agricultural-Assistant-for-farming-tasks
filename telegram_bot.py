@@ -38,11 +38,11 @@ def check_conditions(parcel: str, target_date: str) -> dict:
 
 
 def handle_check(chat_id: str):
-    result = get_planned_sprays(days_ahead=3)
+    result = get_planned_sprays(days_ahead=5)
     sprays = result.get("sprays", [])
 
     if not sprays:
-        send_message(chat_id, "🌹 Няма планирани пръскания за следващите 3 дни.")
+        send_message(chat_id, "🌹 Няма планирани пръскания за следващите 5 дни.")
         return
 
     lines = ["🌹 <b>Агро Асистент — Проверка</b>", ""]
