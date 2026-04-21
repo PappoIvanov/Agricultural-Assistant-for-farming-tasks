@@ -1,12 +1,20 @@
+import os
 import requests
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from pathlib import Path
+from supabase import create_client as _create_supabase
 from config import PARCELS, ROSE_CONFIG, DIARY_PATH
+
+
+def _supabase():
+    return _create_supabase(
+        os.getenv("SUPABASE_URL"),
+        os.getenv("SUPABASE_KEY"),
+    )
 
 
 LITERATURE_DIR = Path("05_Литература")
 DIAGNOSTIC_DIARY_PATH = Path("05_Литература/Диагностичен_дневник.md")
-PLANNED_SPRAYS_PATH = Path("01_Дневник_Операции/планирани_пръскания.json")
 
 
 def get_weather(parcel_name: str, target_date: str = None) -> dict:
@@ -262,35 +270,36 @@ def save_planned_spray(
     nozzle_count: int,
     notes: str = "",
 ) -> dict:
-    """Записва планирано бъдещо пръскане."""
-    import json as _json
-    record = {
-        "date": planned_date,
-        "parcel": parcel,
-        "products": products,
-        "volume_liters": volume_liters,
-        "nozzle_count": nozzle_count,
-        "notes": notes,
-    }
-    existing = []
-    if PLANNED_SPRAYS_PATH.exists():
-        existing = _json.loads(PLANNED_SPRAYS_PATH.read_text(encoding="utf-8"))
-    existing.append(record)
-    PLANNED_SPRAYS_PATH.write_text(
-        _json.dumps(existing, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    return {"status": "ok", "message": f"Планирано пръскане записано за {planned_date}"}
+    """Записва планирано пръскане в Supabase."""
+    try:
+        _supabase().table("planned_sprays").insert({
+            "planned_date": planned_date,
+            "parcel": parcel,
+            "products": products,
+            "volume_liters": volume_liters,
+            "nozzle_count": nozzle_count,
+            "notes": notes,
+            "completed": False,
+        }).execute()
+        return {"status": "ok", "message": f"Планирано пръскане записано за {planned_date}"}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 def get_planned_sprays(days_ahead: int = 3) -> dict:
-    """Връща планираните пръскания за следващите N дни."""
-    import json as _json
-    if not PLANNED_SPRAYS_PATH.exists():
-        return {"sprays": []}
-    all_sprays = _json.loads(PLANNED_SPRAYS_PATH.read_text(encoding="utf-8"))
-    today = date.today()
-    upcoming = [
-        s for s in all_sprays
-        if 0 <= (date.fromisoformat(s["date"]) - today).days <= days_ahead
-    ]
-    return {"sprays": upcoming}
+    """Връща планираните пръскания за следващите N дни от Supabase."""
+    try:
+        today = date.today().isoformat()
+        until = (date.today() + timedelta(days=days_ahead)).isoformat()
+        result = (
+            _supabase().table("planned_sprays")
+            .select("*")
+            .eq("completed", False)
+            .gte("planned_date", today)
+            .lte("planned_date", until)
+            .order("planned_date")
+            .execute()
+        )
+        return {"sprays": result.data}
+    except Exception as e:
+        return {"error": str(e)}
