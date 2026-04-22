@@ -242,8 +242,15 @@ def search_literature(query: str, filename: str = None) -> dict:
         return sum(1 for kw in keywords if kw in chunk_lower)
 
     try:
+        _SEARCH_DIRS = [LITERATURE_DIR, Path("03_Препарати_и_Торове")]
         keywords = [w.lower() for w in query.split() if len(w) > 2]
-        files = [LITERATURE_DIR / filename] if filename else list(LITERATURE_DIR.rglob("*"))
+        if filename:
+            files = [LITERATURE_DIR / filename]
+        else:
+            files = []
+            for d in _SEARCH_DIRS:
+                if d.exists():
+                    files.extend(d.rglob("*"))
         files = [f for f in files if f.is_file() and f.suffix.lower() in (".txt", ".md", ".pdf", ".docx")]
         # Пропускай PDF/DOCX ако вече има парсната .txt или .md версия
         parsed_stems = {f.stem for f in files if f.suffix.lower() in (".txt", ".md")}

@@ -1,20 +1,24 @@
 """
-Преобразува PDF и DOCX файлове в 05_Литература/ към .txt или .md.
+Преобразува PDF, DOCX и XLSX файлове към .txt или .md.
 - Файлове с таблици → .md (markdown таблици)
 - Файлове без таблици → .txt (обикновен текст)
+- XLSX → винаги .md (таблични данни)
 Пропуска файлове, които вече са обработени.
 Пускай: python preprocess_literature.py
 """
 
 from pathlib import Path
 
-LITERATURE_DIR = Path("05_Литература")
+SEARCH_DIRS = [
+    Path("05_Литература"),
+    Path("03_Препарати_и_Торове"),
+]
 
 
 def _table_to_markdown(table: list) -> str:
     if not table or not table[0]:
         return ""
-    rows = [[cell or "" for cell in row] for row in table]
+    rows = [[str(cell) if cell is not None else "" for cell in row] for row in table]
     header = "| " + " | ".join(rows[0]) + " |"
     separator = "| " + " | ".join("---" for _ in rows[0]) + " |"
     body = "\n".join("| " + " | ".join(row) + " |" for row in rows[1:])
@@ -72,47 +76,75 @@ def _process_docx(path: Path) -> tuple[str, bool]:
     return "\n\n".join(parts), has_tables
 
 
-def process_all():
-    if not LITERATURE_DIR.exists():
-        print("Папката 05_Литература/ не е намерена.")
-        return
+def _process_xlsx(path: Path) -> tuple[str, bool]:
+    import openpyxl
+    wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
+    parts = []
 
-    files = [f for f in LITERATURE_DIR.rglob("*")
-             if f.is_file() and f.suffix.lower() in (".pdf", ".docx")]
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        rows = []
+        for row in ws.iter_rows(values_only=True):
+            if any(cell is not None for cell in row):
+                rows.append([str(cell) if cell is not None else "" for cell in row])
 
-    if not files:
-        print("Няма PDF или DOCX файлове за обработка.")
-        return
-
-    for path in files:
-        txt_out = path.with_suffix(".txt")
-        md_out = path.with_suffix(".md")
-
-        if txt_out.exists() or md_out.exists():
-            print(f"  Пропускам (вече обработен): {path.name}")
+        if not rows:
             continue
 
-        print(f"  Обработвам: {path.name} ...", end=" ", flush=True)
-        try:
-            if path.suffix.lower() == ".pdf":
-                text, has_tables = _process_pdf(path)
-            else:
-                text, has_tables = _process_docx(path)
+        parts.append(f"## Лист: {sheet_name}")
+        parts.append(_table_to_markdown(rows))
 
-            if has_tables:
-                out_path = md_out
-                label = "таблици → .md"
-            else:
-                out_path = txt_out
-                label = "текст → .txt"
+    wb.close()
+    return "\n\n".join(parts), True
 
-            out_path.write_text(text, encoding="utf-8")
-            print(f"{label}  ✓")
 
-        except Exception as e:
-            print(f"ГРЕШКА: {e}")
+def process_all():
+    found_any = False
 
-    print("\nГотово.")
+    for search_dir in SEARCH_DIRS:
+        if not search_dir.exists():
+            print(f"Папката {search_dir}/ не е намерена — пропускам.")
+            continue
+
+        files = [f for f in search_dir.rglob("*")
+                 if f.is_file() and f.suffix.lower() in (".pdf", ".docx", ".xlsx")]
+
+        if not files:
+            print(f"Няма файлове за обработка в {search_dir}/")
+            continue
+
+        print(f"\n📂 {search_dir}/")
+        found_any = True
+
+        for path in files:
+            txt_out = path.with_suffix(".txt")
+            md_out = path.with_suffix(".md")
+
+            if txt_out.exists() or md_out.exists():
+                print(f"  Пропускам (вече обработен): {path.name}")
+                continue
+
+            print(f"  Обработвам: {path.name} ...", end=" ", flush=True)
+            try:
+                suffix = path.suffix.lower()
+                if suffix == ".pdf":
+                    text, has_tables = _process_pdf(path)
+                elif suffix == ".docx":
+                    text, has_tables = _process_docx(path)
+                elif suffix == ".xlsx":
+                    text, has_tables = _process_xlsx(path)
+
+                out_path = md_out if has_tables else txt_out
+                label = "таблици → .md" if has_tables else "текст → .txt"
+
+                out_path.write_text(text, encoding="utf-8")
+                print(f"{label}  ✓")
+
+            except Exception as e:
+                print(f"ГРЕШКА: {e}")
+
+    if found_any:
+        print("\nГотово.")
 
 
 if __name__ == "__main__":
