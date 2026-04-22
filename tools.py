@@ -303,3 +303,12 @@ def get_planned_sprays(days_ahead: int = 3) -> dict:
         return {"sprays": result.data}
     except Exception as e:
         return {"error": str(e)}
+
+
+def complete_planned_spray(spray_id: int) -> dict:
+    """Маркира планирано пръскане като изпълнено в Supabase."""
+    try:
+        _supabase().table("planned_sprays").update({"completed": True}).eq("id", spray_id).execute()
+        return {"status": "ok", "message": f"Пръскане #{spray_id} е маркирано като изпълнено."}
+    except Exception as e:
+        return {"error": str(e)}

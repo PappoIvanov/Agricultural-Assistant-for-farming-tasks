@@ -6,7 +6,7 @@ from tools import (
     get_weather, save_spray_record, read_spray_history, calculate_concentration,
     list_literature, read_literature,
     read_diagnostic_diary, save_diagnostic_case,
-    send_telegram, save_planned_spray, get_planned_sprays,
+    send_telegram, save_planned_spray, get_planned_sprays, complete_planned_spray,
 )
 
 
@@ -55,6 +55,7 @@ SYSTEM_PROMPT = """Ти си агро асистент за стопанство
 - Когато питат за файл от литературата — използвай list_literature и read_literature.
 - Когато потребителят казва че планира пръскане на дадена дата — използвай save_planned_spray за да го запишеш в Supabase. Извличай: дата, парцел, препарати с дози, литри разтвор, брой дюзи.
 - Когато питат за предстоящи пръскания — използвай get_planned_sprays.
+- Когато потребителят казва че е напръскал по план — първо извикай get_planned_sprays, намери записа по парцел и дата, маркирай го с complete_planned_spray(spray_id), след това запиши в дневника с save_spray_record.
 
 Отговаряй на български. Бъди конкретен и практичен."""
 
@@ -214,6 +215,17 @@ TOOLS = [
             },
         },
     },
+    {
+        "name": "complete_planned_spray",
+        "description": "Маркира планирано пръскане като изпълнено. Извиквай след като потребителят потвърди че е напръскал.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "spray_id": {"type": "integer", "description": "ID на записа от get_planned_sprays"},
+            },
+            "required": ["spray_id"],
+        },
+    },
 
 ]
 
@@ -229,6 +241,7 @@ TOOL_FUNCTIONS = {
     "send_telegram": send_telegram,
     "save_planned_spray": save_planned_spray,
     "get_planned_sprays": get_planned_sprays,
+    "complete_planned_spray": complete_planned_spray,
 
 }
 
