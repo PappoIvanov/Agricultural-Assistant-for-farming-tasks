@@ -19,19 +19,31 @@ The agent starts with roses because that is what I know best. Once it performs r
 
 ### Plant Protection
 - Records completed spray operations with products, doses, volume, nozzle type
-- Calculates product concentration corrected for row spacing and canopy width
+- Calculates product concentration corrected for row spacing and canopy width (including row correction factor)
 - Retrieves 7-day weather forecasts for each parcel (wind, rain, temperature)
-- Saves planned sprays to a cloud database (Supabase)
-- Sends Telegram notifications with spray conditions for the next 5 days
+- Saves planned sprays to Supabase — with confirmation step before writing, duplicate prevention, and total product amount per item
+- Sends Telegram notifications with spray conditions and product amounts for the next 5 days
 - Maintains a diagnostic diary of symptoms, diagnoses, and corrections over time
-- Reads agronomic literature (PDF, DOCX, MD) to inform its recommendations
+- Searches agronomic literature (PDF, DOCX, MD, XLSX) by keyword — returns only relevant excerpts, never reads full files
+- Knows the full phenological calendar of Rosa damascena — determines growth stage automatically from the date
+- Never names a disease or pest without verifying it in literature first
+
+### Agrotechnical Operations
+- Records field operations: cultivation, disc harrowing, pruning, irrigation, fertilization
+- Recommends when to repeat an operation based on elapsed time, weather forecast, and seasonal stage
+- Can analyse field photos to assess weed coverage
+
+### Knowledge Base
+- `База_знания.md` — structured reference for all major diseases, pests, economic thresholds, spray calendar, and fertilization schedule, extracted from НСРЗ and БАБХ literature
+- `preprocess_literature.py` — converts PDF, DOCX, and XLSX files to searchable .md/.txt on demand; auto-detects tables
 
 ### Infrastructure
 - Streamlit chat interface with image upload and manual model selection
 - Claude Haiku by default, Claude Sonnet for images, PDFs, and complex queries
 - Telegram bot deployed on Render (24/7, free tier) — send `/проверка` from phone
 - Supabase cloud database for planned sprays
-- All spray history stored locally in Markdown
+- Spray history and agrotechnical diary stored locally in Markdown
+- Literature search covers both `05_Литература/` and `03_Препарати_и_Торове/`
 
 ---
 
@@ -85,11 +97,16 @@ The agent operates with three levels of authority:
 - [x] Spray diary and history
 - [x] Concentration calculator with row correction
 - [x] Weather integration (Open-Meteo)
-- [x] Planned sprays with cloud storage
-- [x] Telegram notifications
+- [x] Planned sprays with cloud storage (Supabase)
+- [x] Telegram notifications with product amounts
 - [x] Diagnostic diary (local agent memory)
-- [x] Literature reading (PDF, DOCX, MD)
-- [ ] Mark sprays as completed
+- [x] Literature search — keyword search across PDF, DOCX, MD, XLSX
+- [x] Literature preprocessing script (PDF/DOCX/XLSX → MD/TXT, table-aware)
+- [x] Phenological calendar built into the agent
+- [x] Structured knowledge base (База_знания.md)
+- [x] Confirmation step before writing planned sprays
+- [x] Duplicate spray prevention
+- [ ] Mark sprays as completed via chat
 - [ ] БАБХ official diary auto-fill (.docx)
 - [ ] Soil analysis input for fertilizer baseline
 
@@ -100,10 +117,11 @@ The agent operates with three levels of authority:
 - [ ] NPK balance tracking per parcel
 - [ ] Integration with Phase 1 (no spraying during fertilization windows)
 
-### Phase 3 — Agrotechnical Operations *(2027)*
+### Phase 3 — Agrotechnical Operations *(started 2026-04-22)*
+- [x] Agrotechnical diary (cultivation, pruning, irrigation, fertilization)
+- [x] Recommendation engine — elapsed time + weather + season + photo
 - [ ] Pruning calendar with timing recommendations
-- [ ] Soil cultivation scheduling
-- [ ] Irrigation management
+- [ ] Irrigation scheduling
 
 ### Phase 4 — Financial Module *(2027)*
 - [ ] Expense tracking (products, labor, machinery, vehicles, equipment)
@@ -149,14 +167,15 @@ The agent operates with three levels of authority:
 ├── config.py             # Parcel coordinates, farm parameters, nozzle specs
 ├── telegram_bot.py       # Flask webhook bot for Render deployment
 ├── morning_check.py      # Local script for manual spray condition check
+├── preprocess_literature.py  # Converts PDF/DOCX/XLSX to searchable MD/TXT
 ├── Procfile              # Render deployment configuration
 ├── requirements.txt      # Python dependencies
 ├── .env                  # API keys (not committed)
-├── 01_Дневник_Операции/  # Spray diary, БАБХ records, literature
+├── 01_Дневник_Операции/  # Spray diary, agrotechnical diary, БАБХ records
 ├── 02_Администрация/     # Contracts, subsidies, documents
-├── 03_Препарати_и_Торове/ # Product inventory, spray calendar
+├── 03_Препарати_и_Торове/ # Spray calendar, soil operations, БАБХ register
 ├── 04_Парцели/           # Parcel data, cadastre, lease agreements
-└── 05_Литература/        # Agronomic literature, diagnostic photos
+└── 05_Литература/        # Literature, knowledge base, diagnostic diary
 ```
 
 ---
@@ -189,3 +208,8 @@ SUPABASE_KEY=...
 | 2026-04-21 | Diagnostic diary for symptom memory and corrections |
 | 2026-04-21 | Telegram bot, Supabase planned sprays, Render deployment, webhook |
 | 2026-04-22 | Rewrote README in English, defined full architecture and roadmap |
+| 2026-04-22 | Literature search (keyword-based, PDF/DOCX/MD/XLSX), preprocessing script with table detection |
+| 2026-04-22 | Knowledge base (База_знания.md) — diseases, pests, thresholds, spray calendar extracted from НСРЗ/БАБХ |
+| 2026-04-22 | Phenological calendar in agent, honesty rules, literature-first disease naming |
+| 2026-04-22 | Confirmation step + duplicate prevention for planned sprays; product amount field in Telegram |
+| 2026-04-22 | Agrotechnical diary — log cultivation, pruning, irrigation; recommendations from history + weather |

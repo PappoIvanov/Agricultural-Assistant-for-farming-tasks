@@ -3,7 +3,7 @@ import requests
 from datetime import datetime, date, timedelta
 from pathlib import Path
 from supabase import create_client as _create_supabase
-from config import PARCELS, ROSE_CONFIG, DIARY_PATH
+from config import PARCELS, ROSE_CONFIG, DIARY_PATH, AGRO_DIARY_PATH
 
 
 def _supabase():
@@ -397,5 +397,52 @@ def complete_planned_spray(spray_id: int) -> dict:
     try:
         _supabase().table("planned_sprays").update({"completed": True}).eq("id", spray_id).execute()
         return {"status": "ok", "message": f"Пръскане #{spray_id} е маркирано като изпълнено."}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def save_agro_operation(
+    operation_type: str,
+    parcel: str,
+    notes: str = "",
+    equipment: str = "",
+    record_date: str = None,
+) -> dict:
+    """Записва агротехническа операция в дневника."""
+    if record_date is None:
+        record_date = date.today().isoformat()
+
+    entry = f"""
+## {operation_type} — {record_date}
+
+**Парцел:** {parcel}
+**Оборудване:** {equipment if equipment else "—"}
+**Бележки:** {notes if notes else "—"}
+
+---
+"""
+    try:
+        diary = Path(AGRO_DIARY_PATH)
+        diary.parent.mkdir(parents=True, exist_ok=True)
+        with open(diary, "a", encoding="utf-8") as f:
+            f.write(entry)
+        return {"status": "ok", "message": f"{operation_type} записано за {record_date}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def read_agro_history(parcel: str = None, operation_type: str = None, limit: int = 10) -> dict:
+    """Чете историята на агротехническите операции."""
+    try:
+        diary = Path(AGRO_DIARY_PATH)
+        if not diary.exists():
+            return {"entries": [], "message": "Все още няма записани агротехнически операции."}
+        content = diary.read_text(encoding="utf-8")
+        entries = [e.strip() for e in content.split("---") if e.strip()]
+        if parcel:
+            entries = [e for e in entries if parcel in e]
+        if operation_type:
+            entries = [e for e in entries if operation_type.lower() in e.lower()]
+        return {"entries": entries[-limit:]}
     except Exception as e:
         return {"error": str(e)}
