@@ -52,7 +52,8 @@ def handle_check(chat_id: str):
         parcel = spray["parcel"]
         products = spray.get("products", [])
         products_str = "\n".join(
-            f"  • {p['name']} — {p.get('dose', '?')}" for p in products
+            f"  • {p['name']} — {p.get('dose', '?')}" + (f" (общо: {p['amount']})" if p.get('amount') else "")
+            for p in products
         )
         cond = check_conditions(parcel, target_date)
 

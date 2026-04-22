@@ -36,7 +36,10 @@ def get_weather(parcel_name: str, target_date: str = None) -> dict:
     }
     try:
         r = requests.get(url, params=params, timeout=10)
-        data = r.json()["daily"]
+        response_json = r.json()
+        if "daily" not in response_json:
+            return {"error": "Метео услугата не отговори. Не пръскай без да знаеш условията."}
+        data = response_json["daily"]
         dates = data["dates"] if "dates" in data else data.get("time", [])
         result = []
         for i, d in enumerate(dates):
@@ -49,7 +52,7 @@ def get_weather(parcel_name: str, target_date: str = None) -> dict:
             })
         return {"parcel": parcel_name, "forecast": result}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": f"Метео услугата не отговори ({e}). Не пръскай без да знаеш условията."}
 
 
 def save_spray_record(
@@ -161,6 +164,15 @@ def list_literature() -> dict:
     return {"files": files, "total": len(files)}
 
 
+MAX_LITERATURE_CHARS = 12000
+
+
+def _truncate(text: str) -> str:
+    if len(text) > MAX_LITERATURE_CHARS:
+        return text[:MAX_LITERATURE_CHARS] + f"\n\n[... файлът е съкратен до {MAX_LITERATURE_CHARS} символа]"
+    return text
+
+
 def read_literature(filename: str) -> dict:
     """Чете файл от 05_Литература/. Поддържа .txt, .md, .pdf, .docx."""
     matches = list(LITERATURE_DIR.rglob(filename))
@@ -178,7 +190,7 @@ def read_literature(filename: str) -> dict:
             from docx import Document
             doc = Document(str(path))
             text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
-            return {"filename": filename, "content": text}
+            return {"filename": filename, "content": _truncate(text)}
 
         elif suffix == ".pdf":
             import pdfplumber
@@ -188,7 +200,7 @@ def read_literature(filename: str) -> dict:
                     text = page.extract_text()
                     if text:
                         pages.append(f"[Страница {i}]\n{text}")
-            return {"filename": filename, "content": "\n\n".join(pages)}
+            return {"filename": filename, "content": _truncate("\n\n".join(pages))}
 
         elif suffix in (".jpg", ".jpeg", ".png"):
             return {
@@ -199,6 +211,61 @@ def read_literature(filename: str) -> dict:
 
         else:
             return {"error": f"Неподдържан формат: {suffix}"}
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def search_literature(query: str, filename: str = None) -> dict:
+    """Търси по ключови думи в литературата и връща само релевантните части."""
+    def _extract_text(path: Path) -> str:
+        suffix = path.suffix.lower()
+        if suffix in (".txt", ".md"):
+            return path.read_text(encoding="utf-8")
+        elif suffix == ".docx":
+            from docx import Document
+            doc = Document(str(path))
+            return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+        elif suffix == ".pdf":
+            import pdfplumber
+            pages = []
+            with pdfplumber.open(str(path)) as pdf:
+                for i, page in enumerate(pdf.pages, 1):
+                    t = page.extract_text()
+                    if t:
+                        pages.append(f"[Страница {i}]\n{t}")
+            return "\n\n".join(pages)
+        return ""
+
+    def _score_chunk(chunk: str, keywords: list) -> int:
+        chunk_lower = chunk.lower()
+        return sum(1 for kw in keywords if kw in chunk_lower)
+
+    try:
+        keywords = [w.lower() for w in query.split() if len(w) > 2]
+        files = [LITERATURE_DIR / filename] if filename else list(LITERATURE_DIR.rglob("*"))
+        files = [f for f in files if f.is_file() and f.suffix.lower() in (".txt", ".md", ".pdf", ".docx")]
+        # Пропускай PDF/DOCX ако вече има парсната .txt или .md версия
+        parsed_stems = {f.stem for f in files if f.suffix.lower() in (".txt", ".md")}
+        files = [f for f in files if f.suffix.lower() in (".txt", ".md") or f.stem not in parsed_stems]
+
+        all_results = []
+        for path in files:
+            text = _extract_text(path)
+            chunks = [c.strip() for c in text.split("\n\n") if c.strip()]
+            for chunk in chunks:
+                score = _score_chunk(chunk, keywords)
+                if score > 0:
+                    all_results.append((score, path.name, chunk))
+
+        all_results.sort(key=lambda x: x[0], reverse=True)
+        top = all_results[:8]
+
+        if not top:
+            return {"results": [], "message": "Няма намерени резултати за: " + query}
+
+        results = [{"file": name, "score": score, "text": chunk} for score, name, chunk in top]
+        return {"query": query, "results": results}
 
     except Exception as e:
         return {"error": str(e)}
@@ -272,6 +339,19 @@ def save_planned_spray(
 ) -> dict:
     """Записва планирано пръскане в Supabase."""
     try:
+        spray_date = date.fromisoformat(planned_date)
+        if spray_date < date.today():
+            return {"error": f"Датата {planned_date} е в миналото. Моля въведи бъдеща дата."}
+        existing = (
+            _supabase().table("planned_sprays")
+            .select("id")
+            .eq("planned_date", planned_date)
+            .eq("parcel", parcel)
+            .eq("completed", False)
+            .execute()
+        )
+        if existing.data:
+            return {"error": f"Вече има планирано пръскане за {planned_date} на {parcel}. Изтрий го първо или избери друга дата."}
         _supabase().table("planned_sprays").insert({
             "planned_date": planned_date,
             "parcel": parcel,

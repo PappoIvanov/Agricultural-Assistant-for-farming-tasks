@@ -57,14 +57,20 @@ if prompt := st.chat_input("Напиши съобщение..."):
 
     with st.chat_message("assistant"):
         with st.spinner("Обработвам..."):
-            response, used_model = chat(
-                st.session_state.messages,
-                image_data=image_data,
-                force_model=_FORCE_MODEL[model_choice],
-            )
-        st.markdown(response)
-        model_label = "Haiku" if "haiku" in used_model else "Sonnet"
-        st.caption(f"Модел: {model_label}")
-
-    st.session_state.messages.append({"role": "assistant", "content": response})
+            try:
+                response, used_model = chat(
+                    st.session_state.messages,
+                    image_data=image_data,
+                    force_model=_FORCE_MODEL[model_choice],
+                )
+                st.markdown(response)
+                model_label = "Haiku" if "haiku" in used_model else "Sonnet"
+                st.caption(f"Модел: {model_label}")
+                st.session_state.messages.append({"role": "assistant", "content": response})
+            except Exception as e:
+                err = str(e)
+                if "rate_limit" in err:
+                    st.warning("Достигнат е лимитът на заявките. Изчакай 1 минута и опитай отново.")
+                else:
+                    st.error(f"Грешка: {err}")
     st.rerun()
