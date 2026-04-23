@@ -1,6 +1,10 @@
+import os
 import streamlit as st
 import base64
 from agent import chat, MODEL_HAIKU, MODEL_SONNET
+
+# Увери се, че работната директория е папката на проекта
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 st.set_page_config(
     page_title="Агро Асистент — Маслодайна Роза",
@@ -55,6 +59,7 @@ if prompt := st.chat_input("Напиши съобщение..."):
     with st.chat_message("user"):
         st.markdown(prompt)
 
+    success = False
     with st.chat_message("assistant"):
         with st.spinner("Обработвам..."):
             try:
@@ -67,10 +72,14 @@ if prompt := st.chat_input("Напиши съобщение..."):
                 model_label = "Haiku" if "haiku" in used_model else "Sonnet"
                 st.caption(f"Модел: {model_label}")
                 st.session_state.messages.append({"role": "assistant", "content": response})
+                success = True
             except Exception as e:
                 err = str(e)
                 if "rate_limit" in err:
                     st.warning("Достигнат е лимитът на заявките. Изчакай 1 минута и опитай отново.")
                 else:
                     st.error(f"Грешка: {err}")
-    st.rerun()
+                    st.error("Виж черния прозорец на терминала за повече детайли.")
+
+    if success:
+        st.rerun()

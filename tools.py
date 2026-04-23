@@ -266,14 +266,49 @@ def search_literature(query: str, filename: str = None) -> dict:
                     all_results.append((score, path.name, chunk))
 
         all_results.sort(key=lambda x: x[0], reverse=True)
-        top = all_results[:8]
+        top = all_results[:5]
 
         if not top:
             return {"results": [], "message": "Няма намерени резултати за: " + query}
 
-        results = [{"file": name, "score": score, "text": chunk} for score, name, chunk in top]
+        MAX_CHUNK_CHARS = 500
+        MAX_TOTAL_CHARS = 3000
+        results = []
+        total = 0
+        for score, name, chunk in top:
+            chunk = chunk[:MAX_CHUNK_CHARS]
+            if total + len(chunk) > MAX_TOTAL_CHARS:
+                break
+            results.append({"file": name, "score": score, "text": chunk})
+            total += len(chunk)
+
         return {"query": query, "results": results}
 
+    except Exception as e:
+        return {"error": str(e)}
+
+
+KNOWLEDGE_BASE_PATH = Path("05_Литература/База_знания.md")
+
+
+def save_to_knowledge_base(title: str, content: str, source: str = None) -> dict:
+    """Записва нова информация в База_знания.md — научено от снимка, литература или наблюдение."""
+    today = date.today().isoformat()
+    source_line = f"**Източник:** {source}" if source else ""
+
+    entry = f"""
+## {title} *(добавено {today})*
+
+{source_line}
+
+{content}
+
+---
+"""
+    try:
+        with open(KNOWLEDGE_BASE_PATH, "a", encoding="utf-8") as f:
+            f.write(entry)
+        return {"status": "ok", "message": f"Записано в базата знания: {title}"}
     except Exception as e:
         return {"error": str(e)}
 
