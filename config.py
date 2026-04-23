@@ -22,7 +22,23 @@ PARCELS = {
     },
 }
 
-# TODO: потвърди точните стойности на място
+TRACTORS = {
+    "Т-25": {
+        "model": "Т-25 (двигател Д-21, 20 к.с., 2-цилиндров дизел)",
+        "spraying_speed_kmh": 8.37,
+        "spraying_gear": "III предавка",
+        "pto_rpm": 545,
+        "fuel_tank_l": 45,
+    },
+    "ЮМЗ-6": {
+        "model": "ЮМЗ-6КЛ/КМ (двигател Д-65, 62 к.с., 4-цилиндров дизел)",
+        "spraying_speed_kmh": 9.0,
+        "spraying_gear": "II предавка без редуктор",
+        "pto_rpm": 540,
+        "fuel_tank_l": 90,
+    },
+}
+
 ROSE_CONFIG = {
     "row_spacing_m": 2.0,
     "canopy_width_m": 0.5,
@@ -38,8 +54,6 @@ ROSE_CONFIG = {
             "use": "край на пролетта, развито растение",
         },
     },
-    # TODO: потвърди скоростта на трактора
-    "tractor_speed_kmh": None,
 }
 
 DIARY_PATH = "01_Дневник_Операции/ШАБЛОН_дневник.md"
