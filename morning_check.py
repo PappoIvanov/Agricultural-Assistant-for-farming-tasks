@@ -47,7 +47,7 @@ def main():
     lines = ["🌹 <b>Агро Асистент — Сутрешна проверка</b>", ""]
 
     for spray in sprays:
-        target_date = spray["date"]
+        target_date = spray["planned_date"]
         parcel = spray["parcel"]
         products = ", ".join(p["name"] for p in spray["products"])
         cond = check_conditions(parcel, target_date)
