@@ -1,0 +1,34 @@
+name: Сутрешен агро съветник
+
+on:
+  schedule:
+    # Всеки ден в 05:00 UTC = 07:00-08:00 София (лятно часово)
+    - cron: '0 5 * * *'
+  # Позволява ръчно стартиране от GitHub интерфейса (бутон Run workflow)
+  workflow_dispatch:
+
+jobs:
+  daily-advice:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Изтегли кода от репото
+        uses: actions/checkout@v4
+
+      - name: Инсталирай Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Инсталирай зависимостите
+        run: pip install -r requirements.txt
+
+      - name: Стартирай съветника
+        env:
+          ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          SUPABASE_URL:       ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY:       ${{ secrets.SUPABASE_KEY }}
+        run: python daily_advisor.py
