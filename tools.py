@@ -520,37 +520,52 @@ def save_temp_photo(image_base64: str, media_type: str) -> str:
     return filename
 
 
-def save_photo_archive(temp_filename: str, parcel_name: str) -> dict:
-    """Преименува временно запазена снимка с правилното файлово ime:
-    Парцел_1_39579-147-030_20260425_143022.jpg
-    Извиква се от агента след като знае от кой парцел е снимката.
+def save_photo_archive(temp_filename: str, parcel_name: str, category: str = "healthy") -> dict:
+    """Преименува временно запазена снимка и я премества в правилната категория.
+
+    Структура: 07_Photos/{category}/{year}/{parcel}_{cadastral}_{timestamp}.jpg
+
+    Параметри:
+        temp_filename — временното ime от save_temp_photo()
+        parcel_name   — 'Парцел 1' или 'Парцел 2'
+        category      — 'diseases', 'pests', 'weeds' или 'healthy'
     """
+    VALID_CATEGORIES = {"diseases", "pests", "weeds", "healthy"}
+    if category not in VALID_CATEGORIES:
+        category = "healthy"
+
     year = date.today().year
-    photo_dir = PHOTOS_BASE_PATH / str(year)
-    temp_path = photo_dir / temp_filename
+
+    # Временният файл е в 07_Photos/{year}/
+    temp_dir  = PHOTOS_BASE_PATH / str(year)
+    temp_path = temp_dir / temp_filename
 
     if not temp_path.exists():
-        return {"error": f"Временният файл '{temp_filename}' не е намерен в {photo_dir}"}
+        return {"error": f"Временният файл '{temp_filename}' не е намерен в {temp_dir}"}
+
+    # Целевата директория: 07_Photos/{category}/{year}/
+    dest_dir = PHOTOS_BASE_PATH / category / str(year)
+    dest_dir.mkdir(parents=True, exist_ok=True)
 
     parcel = PARCELS.get(parcel_name, {})
     cadastral_id = parcel.get("cadastral_id", "")
 
-    # Извлича timestamp от "temp_20260425_143022.jpg" → "20260425_143022"
     stem = temp_filename.replace("temp_", "").rsplit(".", 1)[0]
-    ext = temp_filename.rsplit(".", 1)[-1]
+    ext  = temp_filename.rsplit(".", 1)[-1]
+    parcel_short = parcel_name.replace(" ", "_")
 
-    parcel_short = parcel_name.replace(" ", "_")   # "Парцел_1"
     if cadastral_id:
         new_name = f"{parcel_short}_{cadastral_id}_{stem}.{ext}"
     else:
         new_name = f"{parcel_short}_{stem}.{ext}"
 
-    new_path = photo_dir / new_name
+    new_path = dest_dir / new_name
     temp_path.rename(new_path)
 
     return {
-        "status": "ok",
-        "saved_as": new_name,
+        "status":    "ok",
+        "saved_as":  new_name,
+        "category":  category,
         "full_path": str(new_path),
-        "message": f"Снимката е запазена като: {new_name}",
+        "message":   f"Снимката е запазена в {category}/{year}/ като: {new_name}",
     }
