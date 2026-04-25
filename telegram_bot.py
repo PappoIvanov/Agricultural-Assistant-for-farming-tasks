@@ -25,6 +25,7 @@ Telegram бот за Агро Асистент — Маслодайна Роза
 import os
 import base64
 import tempfile
+import threading
 import requests
 from pathlib import Path
 from flask import Flask, request
@@ -342,8 +343,13 @@ def webhook():
             return "ok", 200
 
         if parcel:
-            # Парцелът е известен — директен анализ
-            _analyze_photo(chat_id, photo_b64, media_type, parcel, caption)
+            # Парцелът е известен — анализ в background thread
+            send_message(chat_id, "🔍 Снимката е получена. Анализирам...")
+            threading.Thread(
+                target=_analyze_photo,
+                args=(chat_id, photo_b64, media_type, parcel, caption),
+                daemon=True,
+            ).start()
         else:
             # Запазваме снимката и питаме за парцела
             _pending_photos[chat_id] = {
@@ -363,13 +369,12 @@ def webhook():
         parcel = _extract_parcel(text)
         if parcel:
             pending = _pending_photos.pop(chat_id)
-            _analyze_photo(
-                chat_id,
-                pending["photo_b64"],
-                pending["media_type"],
-                parcel,
-                pending["caption"],
-            )
+            send_message(chat_id, "🔍 Анализирам снимката...")
+            threading.Thread(
+                target=_analyze_photo,
+                args=(chat_id, pending["photo_b64"], pending["media_type"], parcel, pending["caption"]),
+                daemon=True,
+            ).start()
         else:
             send_message(
                 chat_id,
