@@ -150,76 +150,19 @@ def _analyze_photo(
     parcel: str,
     caption: str = "",
 ) -> None:
-    """Анализира снимката с YOLOv11, записва я в правилната категория
-    и връща резултата в Telegram. Не използва Claude API."""
+    """Изпраща снимката към Claude за анализ и връща резултата в Telegram.
+    YOLOv11 не се използва на Render поради ограничена памет (512MB).
+    YOLOv11 анализът е наличен локално чрез scripts/predict.py.
+    """
+    user_text = caption.strip() if caption else "Анализирай тази снимка от стопанството."
+    user_text += f" Снимката е от {parcel}."
 
-    send_message(chat_id, "🔍 Анализирам снимката...")
+    messages   = [{"role": "user", "content": user_text}]
+    image_data = {"base64": photo_b64, "media_type": media_type}
 
     try:
-        from ultralytics import YOLO
-        import base64 as _b64
-
-        # Проверяваме дали моделът съществува — ако не, го сваляме от Hugging Face
-        if not _ensure_model():
-            send_message(chat_id, "⚠️ Моделът не може да се свали. Провери интернет връзката.")
-            return
-        model_path = MODEL_PATH
-
-        # Записваме base64 снимката във временен файл
-        ext = media_type.split("/")[-1]
-        if ext == "jpeg":
-            ext = "jpg"
-        with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
-            tmp.write(_b64.b64decode(photo_b64))
-            tmp_path = tmp.name
-
-        # YOLOv11 анализ
-        model   = YOLO(str(model_path))
-        results = model.predict(tmp_path, conf=0.25, verbose=False)
-        os.unlink(tmp_path)   # изтриваме временния файл
-
-        # Извличаме засечените класове
-        detections = []
-        for r in results:
-            for box in r.boxes:
-                cls_name = model.names[int(box.cls[0])]
-                conf     = float(box.conf[0])
-                if cls_name.lower() != "normal":
-                    detections.append((cls_name, conf))
-
-        # Определяме категорията
-        category = _yolo_category([d[0] for d in detections])
-
-        # Записваме снимката в правилната папка
-        import base64 as _b64
-        from datetime import datetime, date
-        from tools import PHOTOS_BASE_PATH
-        year      = date.today().year
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        temp_name = f"temp_{timestamp}.{ext}"
-        temp_dir  = PHOTOS_BASE_PATH / str(year)
-        temp_dir.mkdir(parents=True, exist_ok=True)
-        (temp_dir / temp_name).write_bytes(_b64.b64decode(photo_b64))
-
-        result = save_photo_archive(temp_name, parcel, category)
-
-        # Съставяме отговора
-        if not detections:
-            msg = (
-                f"✅ <b>Здраво растение</b>\n"
-                f"Парцел: {parcel}\n"
-                f"Не са открити болести, неприятели или плевели.\n"
-                f"Снимката е запазена в: <i>healthy/{year}/</i>"
-            )
-        else:
-            lines = [f"⚠️ <b>Открити проблеми — {parcel}</b>\n"]
-            for cls_name, conf in detections:
-                lines.append(f"  • {cls_name} — {conf:.0%} увереност")
-            lines.append(f"\nСнимката е запазена в: <i>{category}/{year}/</i>")
-            msg = "\n".join(lines)
-
-        send_message(chat_id, msg)
-
+        response, _ = agent_chat(messages, image_data=image_data)
+        send_message(chat_id, response)
     except Exception as e:
         send_message(chat_id, f"⚠️ Грешка при анализа: {e}")
 
