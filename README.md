@@ -198,6 +198,8 @@ This project uses the following publicly available datasets:
 - License: CC BY 4.0
 - Content: 3702 images, 4 classes (Black Spot, Downy Mildew, Normal, Powdery Mildew)
 
+Trained model published on Hugging Face: https://huggingface.co/p7ivanov/rose-disease-detection
+
 We are grateful to the authors for making their data publicly available under open licenses.
 
 If you use this project or the trained model, please cite the dataset above.

@@ -42,6 +42,33 @@ WIND_LIMIT = 4.0   # м/с
 RAIN_LIMIT = 0.0   # мм
 
 # ---------------------------------------------------------------------------
+# YOLOv11 модел — сваля се автоматично от Hugging Face ако липсва
+# ---------------------------------------------------------------------------
+
+HF_MODEL_URL = "https://huggingface.co/p7ivanov/rose-disease-detection/resolve/main/best_v1.pt"
+MODEL_PATH   = Path("08_AI_Model/models/trained/best_v1.pt")
+
+
+def _ensure_model() -> bool:
+    """Проверява дали моделът съществува. Ако не — го сваля от Hugging Face.
+    Връща True при успех, False при грешка."""
+    if MODEL_PATH.exists():
+        return True
+    try:
+        MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+        print(f"Свалям модела от Hugging Face...")
+        r = requests.get(HF_MODEL_URL, timeout=120, stream=True)
+        r.raise_for_status()
+        with open(MODEL_PATH, "wb") as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                f.write(chunk)
+        print(f"Моделът е свален успешно: {MODEL_PATH}")
+        return True
+    except Exception as e:
+        print(f"Грешка при сваляне на модела: {e}")
+        return False
+
+# ---------------------------------------------------------------------------
 # Памет за снимки, чакащи отговор "от кой парцел?"
 # chat_id → {"photo_b64": str, "media_type": str, "caption": str}
 # ---------------------------------------------------------------------------
@@ -131,11 +158,11 @@ def _analyze_photo(
         from ultralytics import YOLO
         import base64 as _b64
 
-        # Път до модела — спрямо работната директория на бота
-        model_path = Path("08_AI_Model/models/trained/best_v1.pt")
-        if not model_path.exists():
-            send_message(chat_id, "⚠️ Моделът не е намерен. Свържи се с администратора.")
+        # Проверяваме дали моделът съществува — ако не, го сваляме от Hugging Face
+        if not _ensure_model():
+            send_message(chat_id, "⚠️ Моделът не може да се свали. Провери интернет връзката.")
             return
+        model_path = MODEL_PATH
 
         # Записваме base64 снимката във временен файл
         ext = media_type.split("/")[-1]
