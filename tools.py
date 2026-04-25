@@ -16,7 +16,7 @@ def _supabase():
 LITERATURE_DIR = Path("05_Литература")
 TECH_DIR = Path("06_Техника")
 DIAGNOSTIC_DIARY_PATH = Path("01_Дневник_Операции/Диагностичен_дневник.md")
-PHOTOS_BASE_PATH = Path("07_Снимки")
+PHOTOS_BASE_PATH = Path("07_Photos")
 
 # Всички директории, в които агентът търси литература
 ALL_SEARCH_DIRS = [

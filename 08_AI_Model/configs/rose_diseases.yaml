@@ -1,0 +1,22 @@
+# YOLOv11 — Конфигурация на датасет за болести по Rosa damascena
+# Документация: https://docs.ultralytics.com/datasets/detect/
+
+path: ../datasets/merged   # корен на датасета (спрямо configs/)
+train: train/images
+val:   val/images
+test:  test/images
+
+# Брой класове
+# ФАЗА 1 — публичен датасет (4 класа)
+# Когато добавим лични снимки, класовете може да се разширят
+nc: 4
+
+# Имена на класовете — трябва да съвпадат ТОЧНО с анотациите в датасета
+names:
+  0: Black Spot       # Черни петна (Marssonina rosae)
+  1: Downy Mildew     # Мана (Peronospora sparsa)
+  2: Normal           # Здраво растение
+  3: Powdery Mildew   # Брашнеста мана (Podosphaera pannosa)
+
+# Бележка: Ръжда (Phragmidium), Botrytis и неприятели ще се добавят
+# във Фаза 2 когато натрупаме лични снимки от нашите парцели.
