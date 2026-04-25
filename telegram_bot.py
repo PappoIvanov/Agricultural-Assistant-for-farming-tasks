@@ -7,21 +7,30 @@ Telegram бот за Агро Асистент — Маслодайна Роза
   /помощ      — всички команди
 
 Снимки:
-  Изпрати снимка (с или без текст).
+  Анализират се локално с YOLOv11 (без Claude API разходи).
+  Снимката се записва автоматично в правилната категория:
+    diseases / pests / weeds / healthy
   Ако не посочиш парцела, ботът ще те попита.
-  Ботът анализира и отговаря с диагноза + препоръки.
 
 Текстови въпроси:
-  Всеки текст се предава директно на агента.
+  Всеки текст се предава директно на агента (Claude).
+
+Категории (управлявани от YOLOv11 модела):
+  diseases  — болести по растението (Black Spot, Downy Mildew, Powdery Mildew)
+  pests     — насекоми и неприятели (ще се добави при следваща версия на модела)
+  weeds     — плевели (ще се добави при следваща версия на модела)
+  healthy   — здраво растение (по подразбиране при липса на открити проблеми)
 """
 
 import os
 import base64
+import tempfile
 import requests
+from pathlib import Path
 from flask import Flask, request
 from dotenv import load_dotenv
 from agent import chat as agent_chat
-from tools import get_planned_sprays, get_weather
+from tools import get_planned_sprays, get_weather, save_photo_archive
 
 load_dotenv()
 
@@ -81,6 +90,31 @@ def _download_photo(file_id: str) -> tuple[str, str]:
     return base64.standard_b64encode(photo_r.content).decode(), "image/jpeg"
 
 
+def _yolo_category(detections: list) -> str:
+    """Определя категорията на снимката по резултата от YOLOv11.
+
+    Текущи класове на модела (rose_v1):
+      Black Spot, Downy Mildew, Powdery Mildew → diseases
+      Normal                                   → healthy
+
+    Бъдещи класове (при нова версия на модела):
+      aphid, spider_mite, thrips, ...          → pests
+      weed, thistle, ...                       → weeds
+    """
+    DISEASE_CLASSES = {"black spot", "downy mildew", "powdery mildew"}
+    PEST_CLASSES    = set()   # ← попълва се при следваща версия на модела
+    WEED_CLASSES    = set()   # ← попълва се при следваща версия на модела
+
+    names = {d.lower() for d in detections}
+    if names & DISEASE_CLASSES:
+        return "diseases"
+    if names & PEST_CLASSES:
+        return "pests"
+    if names & WEED_CLASSES:
+        return "weeds"
+    return "healthy"
+
+
 def _analyze_photo(
     chat_id: str,
     photo_b64: str,
@@ -88,17 +122,76 @@ def _analyze_photo(
     parcel: str,
     caption: str = "",
 ) -> None:
-    """Изпраща снимката към агента и връща анализа в Telegram."""
-    user_text = caption.strip() if caption else "Анализирай тази снимка от стопанството."
-    user_text += f" Снимката е от {parcel}."
+    """Анализира снимката с YOLOv11, записва я в правилната категория
+    и връща резултата в Telegram. Не използва Claude API."""
 
-    messages = [{"role": "user", "content": user_text}]
-    image_data = {"base64": photo_b64, "media_type": media_type}
+    send_message(chat_id, "🔍 Анализирам снимката...")
 
-    send_message(chat_id, "🔍 Анализирам снимката, моля изчакай...")
     try:
-        response, _ = agent_chat(messages, image_data=image_data)
-        send_message(chat_id, response)
+        from ultralytics import YOLO
+        import base64 as _b64
+
+        # Път до модела — спрямо работната директория на бота
+        model_path = Path("08_AI_Model/models/trained/best_v1.pt")
+        if not model_path.exists():
+            send_message(chat_id, "⚠️ Моделът не е намерен. Свържи се с администратора.")
+            return
+
+        # Записваме base64 снимката във временен файл
+        ext = media_type.split("/")[-1]
+        if ext == "jpeg":
+            ext = "jpg"
+        with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
+            tmp.write(_b64.b64decode(photo_b64))
+            tmp_path = tmp.name
+
+        # YOLOv11 анализ
+        model   = YOLO(str(model_path))
+        results = model.predict(tmp_path, conf=0.25, verbose=False)
+        os.unlink(tmp_path)   # изтриваме временния файл
+
+        # Извличаме засечените класове
+        detections = []
+        for r in results:
+            for box in r.boxes:
+                cls_name = model.names[int(box.cls[0])]
+                conf     = float(box.conf[0])
+                if cls_name.lower() != "normal":
+                    detections.append((cls_name, conf))
+
+        # Определяме категорията
+        category = _yolo_category([d[0] for d in detections])
+
+        # Записваме снимката в правилната папка
+        import base64 as _b64
+        from datetime import datetime, date
+        from tools import PHOTOS_BASE_PATH
+        year      = date.today().year
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        temp_name = f"temp_{timestamp}.{ext}"
+        temp_dir  = PHOTOS_BASE_PATH / str(year)
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        (temp_dir / temp_name).write_bytes(_b64.b64decode(photo_b64))
+
+        result = save_photo_archive(temp_name, parcel, category)
+
+        # Съставяме отговора
+        if not detections:
+            msg = (
+                f"✅ <b>Здраво растение</b>\n"
+                f"Парцел: {parcel}\n"
+                f"Не са открити болести, неприятели или плевели.\n"
+                f"Снимката е запазена в: <i>healthy/{year}/</i>"
+            )
+        else:
+            lines = [f"⚠️ <b>Открити проблеми — {parcel}</b>\n"]
+            for cls_name, conf in detections:
+                lines.append(f"  • {cls_name} — {conf:.0%} увереност")
+            lines.append(f"\nСнимката е запазена в: <i>{category}/{year}/</i>")
+            msg = "\n".join(lines)
+
+        send_message(chat_id, msg)
+
     except Exception as e:
         send_message(chat_id, f"⚠️ Грешка при анализа: {e}")
 
