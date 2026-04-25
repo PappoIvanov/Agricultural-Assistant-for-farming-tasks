@@ -45,6 +45,13 @@ The agent starts with roses because that is what I know best. Once it performs r
 - Spray history and agrotechnical diary stored locally in Markdown
 - Literature search covers both `05_Литература/` and `03_Препарати_и_Торове/`
 
+### Disease Detection (YOLOv11)
+- Analyses field photos locally — no Claude API cost for image analysis
+- Detects: Black Spot, Downy Mildew, Powdery Mildew, healthy plants
+- Automatically saves photos to the correct category folder: diseases / pests / weeds / healthy
+- Model: YOLOv11n trained on 3702 images, mAP50 = 0.921
+- Future versions: pests (aphids, spider mites), weeds
+
 ---
 
 ## Architecture
@@ -152,6 +159,7 @@ The agent operates with three levels of authority:
 | Notifications | Telegram Bot API |
 | Bot hosting | Render (free tier) |
 | Weather | Open-Meteo API |
+| Disease Detection | YOLOv11n (Ultralytics) — local inference |
 | Local storage | Markdown files |
 | Environment | Python 3, Anaconda |
 
@@ -177,6 +185,22 @@ The agent operates with three levels of authority:
 ├── 04_Парцели/           # Parcel data, cadastre, lease agreements
 └── 05_Литература/        # Literature, knowledge base, diagnostic diary
 ```
+
+---
+
+## Data Sources & Citations
+
+This project uses the following publicly available datasets:
+
+**Rose Disease Prediction Dataset**
+- Author: vinodk
+- Source: https://universe.roboflow.com/vinodk-cb0f7/rose-disease-prediction-yolov5
+- License: CC BY 4.0
+- Content: 3702 images, 4 classes (Black Spot, Downy Mildew, Normal, Powdery Mildew)
+
+We are grateful to the authors for making their data publicly available under open licenses.
+
+If you use this project or the trained model, please cite the dataset above.
 
 ---
 
@@ -213,3 +237,6 @@ SUPABASE_KEY=...
 | 2026-04-22 | Phenological calendar in agent, honesty rules, literature-first disease naming |
 | 2026-04-22 | Confirmation step + duplicate prevention for planned sprays; product amount field in Telegram |
 | 2026-04-22 | Agrotechnical diary — log cultivation, pruning, irrigation; recommendations from history + weather |
+| 2026-04-25 | Photo archive with automatic categorization (diseases/pests/weeds/healthy) |
+| 2026-04-25 | YOLOv11n trained on rose disease dataset — integrated into Telegram bot for local inference |
+| 2026-04-25 | Renamed folders to Latin (07_Photos, 08_AI_Model) for cross-platform compatibility |
