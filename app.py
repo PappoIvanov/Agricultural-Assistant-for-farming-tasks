@@ -2,6 +2,7 @@ import os
 import streamlit as st
 import base64
 from agent import chat, MODEL_HAIKU, MODEL_SONNET
+from tools import save_temp_photo
 
 # Увери се, че работната директория е папката на проекта
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -45,6 +46,7 @@ uploaded_file = st.file_uploader(
 )
 
 image_data = None
+temp_photo_filename = None
 if uploaded_file:
     image_bytes = uploaded_file.read()
     image_data = {
@@ -52,6 +54,11 @@ if uploaded_file:
         "media_type": uploaded_file.type,
     }
     st.image(uploaded_file, width=300)
+    # Записваме снимката веднага с временно ime — агентът ще я преименува с парцела
+    try:
+        temp_photo_filename = save_temp_photo(image_data["base64"], uploaded_file.type)
+    except Exception as e:
+        st.warning(f"Снимката не може да се запази временно: {e}")
 
 # Чат вход
 if prompt := st.chat_input("Напиши съобщение..."):
@@ -67,6 +74,7 @@ if prompt := st.chat_input("Напиши съобщение..."):
                     st.session_state.messages,
                     image_data=image_data,
                     force_model=_FORCE_MODEL[model_choice],
+                    temp_photo_filename=temp_photo_filename,
                 )
                 st.markdown(response)
                 model_label = "Haiku" if "haiku" in used_model else "Sonnet"

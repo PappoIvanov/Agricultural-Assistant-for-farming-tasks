@@ -12,6 +12,7 @@ from pathlib import Path
 SEARCH_DIRS = [
     Path("05_Литература"),
     Path("03_Препарати_и_Торове"),
+    Path("06_Техника"),
 ]
 
 

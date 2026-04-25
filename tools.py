@@ -14,7 +14,16 @@ def _supabase():
 
 
 LITERATURE_DIR = Path("05_Литература")
-DIAGNOSTIC_DIARY_PATH = Path("05_Литература/Диагностичен_дневник.md")
+TECH_DIR = Path("06_Техника")
+DIAGNOSTIC_DIARY_PATH = Path("01_Дневник_Операции/Диагностичен_дневник.md")
+PHOTOS_BASE_PATH = Path("07_Снимки")
+
+# Всички директории, в които агентът търси литература
+ALL_SEARCH_DIRS = [
+    LITERATURE_DIR,
+    Path("03_Препарати_и_Торове"),
+    TECH_DIR,
+]
 
 
 def get_weather(parcel_name: str, target_date: str = None) -> dict:
@@ -149,17 +158,18 @@ def calculate_concentration(
 
 
 def list_literature() -> dict:
-    """Показва всички файлове в 05_Литература/ рекурсивно."""
-    if not LITERATURE_DIR.exists():
-        return {"error": "Папката 05_Литература/ не е намерена"}
+    """Показва всички файлове в папките с литература и техника рекурсивно."""
     files = []
-    for p in LITERATURE_DIR.rglob("*"):
-        if p.is_file():
-            files.append({
-                "name": p.name,
-                "path": str(p.relative_to(LITERATURE_DIR)),
-                "type": p.suffix.lower(),
-                "size_kb": round(p.stat().st_size / 1024, 1),
+    for search_dir in ALL_SEARCH_DIRS:
+        if not search_dir.exists():
+            continue
+        for p in search_dir.rglob("*"):
+            if p.is_file():
+                files.append({
+                    "name": p.name,
+                    "path": str(p.relative_to(search_dir.parent)),
+                    "type": p.suffix.lower(),
+                    "size_kb": round(p.stat().st_size / 1024, 1),
             })
     return {"files": files, "total": len(files)}
 
@@ -174,10 +184,12 @@ def _truncate(text: str) -> str:
 
 
 def read_literature(filename: str) -> dict:
-    """Чете файл от 05_Литература/. Поддържа .txt, .md, .pdf, .docx."""
-    matches = list(LITERATURE_DIR.rglob(filename))
+    """Чете файл от литературните папки. Поддържа .txt, .md, .pdf, .docx."""
+    matches = []
+    for d in ALL_SEARCH_DIRS:
+        matches.extend(d.rglob(filename))
     if not matches:
-        return {"error": f"Файлът '{filename}' не е намерен в 05_Литература/"}
+        return {"error": f"Файлът '{filename}' не е намерен в литературните папки"}
 
     path = matches[0]
     suffix = path.suffix.lower()
@@ -242,13 +254,15 @@ def search_literature(query: str, filename: str = None) -> dict:
         return sum(1 for kw in keywords if kw in chunk_lower)
 
     try:
-        _SEARCH_DIRS = [LITERATURE_DIR, Path("03_Препарати_и_Торове")]
         keywords = [w.lower() for w in query.split() if len(w) > 2]
         if filename:
-            files = [LITERATURE_DIR / filename]
+            matches = []
+            for d in ALL_SEARCH_DIRS:
+                matches.extend(d.rglob(filename))
+            files = matches[:1]
         else:
             files = []
-            for d in _SEARCH_DIRS:
+            for d in ALL_SEARCH_DIRS:
                 if d.exists():
                     files.extend(d.rglob("*"))
         files = [f for f in files if f.is_file() and f.suffix.lower() in (".txt", ".md", ".pdf", ".docx")]
@@ -481,3 +495,62 @@ def read_agro_history(parcel: str = None, operation_type: str = None, limit: int
         return {"entries": entries[-limit:]}
     except Exception as e:
         return {"error": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# Снимки
+# ---------------------------------------------------------------------------
+
+def save_temp_photo(image_base64: str, media_type: str) -> str:
+    """Записва качена снимка с временно ime. Извиква се от app.py веднага при качване.
+    Връща filename-а (напр. 'temp_20260425_143022.jpg') — подава се на агента като контекст.
+    """
+    import base64 as _b64
+    year = date.today().year
+    photo_dir = PHOTOS_BASE_PATH / str(year)
+    photo_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ext = media_type.split("/")[-1]
+    if ext == "jpeg":
+        ext = "jpg"
+    filename = f"temp_{timestamp}.{ext}"
+
+    (photo_dir / filename).write_bytes(_b64.b64decode(image_base64))
+    return filename
+
+
+def save_photo_archive(temp_filename: str, parcel_name: str) -> dict:
+    """Преименува временно запазена снимка с правилното файлово ime:
+    Парцел_1_39579-147-030_20260425_143022.jpg
+    Извиква се от агента след като знае от кой парцел е снимката.
+    """
+    year = date.today().year
+    photo_dir = PHOTOS_BASE_PATH / str(year)
+    temp_path = photo_dir / temp_filename
+
+    if not temp_path.exists():
+        return {"error": f"Временният файл '{temp_filename}' не е намерен в {photo_dir}"}
+
+    parcel = PARCELS.get(parcel_name, {})
+    cadastral_id = parcel.get("cadastral_id", "")
+
+    # Извлича timestamp от "temp_20260425_143022.jpg" → "20260425_143022"
+    stem = temp_filename.replace("temp_", "").rsplit(".", 1)[0]
+    ext = temp_filename.rsplit(".", 1)[-1]
+
+    parcel_short = parcel_name.replace(" ", "_")   # "Парцел_1"
+    if cadastral_id:
+        new_name = f"{parcel_short}_{cadastral_id}_{stem}.{ext}"
+    else:
+        new_name = f"{parcel_short}_{stem}.{ext}"
+
+    new_path = photo_dir / new_name
+    temp_path.rename(new_path)
+
+    return {
+        "status": "ok",
+        "saved_as": new_name,
+        "full_path": str(new_path),
+        "message": f"Снимката е запазена като: {new_name}",
+    }
