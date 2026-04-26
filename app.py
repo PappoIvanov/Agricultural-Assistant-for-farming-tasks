@@ -2,9 +2,10 @@ import os
 import tempfile
 import streamlit as st
 import base64
+from datetime import date
 from pathlib import Path
 from agent import chat, MODEL_HAIKU, MODEL_SONNET
-from tools import save_temp_photo
+from tools import save_temp_photo, PHOTOS_BASE_PATH
 
 # Увери се, че работната директория е папката на проекта
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -20,8 +21,12 @@ st.set_page_config(
 
 st.title("🌹 Агро Асистент — Маслодайна Роза")
 
+# ---------------------------------------------------------------------------
+# Странично меню
+# ---------------------------------------------------------------------------
+
 with st.sidebar:
-    st.header("Models which the agent uses")
+    st.header("Модели")
 
     st.markdown("**Снимки:**")
     if MODEL_PATH.exists():
@@ -35,15 +40,18 @@ with st.sidebar:
     st.caption("Бърз и евтин модел за всички текстови заявки.")
 
     st.divider()
-    st.caption("Моделът се избира автоматично. Не е нужна ръчна настройка.")
+    st.caption("Моделът се избира автоматично.")
 
-# Запазваме _FORCE_MODEL за съвместимост с chat() функцията
-_FORCE_MODEL = {
-    "Авто": None,
-    "Haiku (бърз)": MODEL_HAIKU,
-    "Sonnet (прецизен)": MODEL_SONNET,
-}
-model_choice = "Авто"
+# ---------------------------------------------------------------------------
+# Session state — запазва данните между rerun-ите
+# ---------------------------------------------------------------------------
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "temp_photo_filename" not in st.session_state:
+    st.session_state.temp_photo_filename = None
+if "yolo_result" not in st.session_state:
+    st.session_state.yolo_result = None
 
 # ---------------------------------------------------------------------------
 # YOLOv11 — локален анализ на снимки
@@ -51,7 +59,7 @@ model_choice = "Авто"
 
 def _yolo_analyze(image_b64: str, media_type: str) -> str | None:
     """Анализира снимката с YOLOv11 локално.
-    Връща текстов резултат за Claude или None ако моделът не е наличен.
+    Връща текстов резултат за Claude или None при грешка.
     """
     if not MODEL_PATH.exists():
         return None
@@ -89,32 +97,23 @@ def _yolo_analyze(image_b64: str, media_type: str) -> str | None:
     except Exception as e:
         return f"YOLOv11 анализ: грешка ({e})"
 
-
 # ---------------------------------------------------------------------------
-# Session state
-# ---------------------------------------------------------------------------
-
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
 # История на разговора
+# ---------------------------------------------------------------------------
+
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
 # ---------------------------------------------------------------------------
-# Прикачване на снимка
+# Upload на снимка — над чат полето, само показва снимката
 # ---------------------------------------------------------------------------
 
 uploaded_file = st.file_uploader(
-    "Прикачи снимка (по избор)",
+    "📷 Прикачи снимка за анализ",
     type=["jpg", "jpeg", "png"],
-    label_visibility="collapsed",
+    label_visibility="visible",
 )
-
-image_data          = None
-temp_photo_filename = None
-yolo_result         = None
 
 if uploaded_file:
     image_bytes = uploaded_file.read()
@@ -124,20 +123,30 @@ if uploaded_file:
     }
     st.image(uploaded_file, width=300)
 
-    # Записваме снимката временно
-    try:
-        temp_photo_filename = save_temp_photo(image_data["base64"], uploaded_file.type)
-    except Exception as e:
-        st.warning(f"Снимката не може да се запази временно: {e}")
+    # Записваме снимката временно и пускаме YOLOv11 само веднъж
+    if st.session_state.temp_photo_filename is None:
+        try:
+            st.session_state.temp_photo_filename = save_temp_photo(
+                image_data["base64"], uploaded_file.type
+            )
+        except Exception as e:
+            st.warning(f"Снимката не може да се запази временно: {e}")
 
-    # YOLOv11 локален анализ — само ако моделът е наличен
-    if MODEL_PATH.exists():
-        with st.spinner("YOLOv11 анализира снимката..."):
-            yolo_result = _yolo_analyze(image_data["base64"], uploaded_file.type)
-        if yolo_result:
-            st.info(yolo_result)
-    else:
-        st.error("YOLOv11 моделът не е намерен. Анализът на снимки не е наличен.")
+        if MODEL_PATH.exists():
+            with st.spinner("YOLOv11 анализира снимката..."):
+                st.session_state.yolo_result = _yolo_analyze(
+                    image_data["base64"], uploaded_file.type
+                )
+        else:
+            st.error("YOLOv11 моделът не е намерен. Анализът на снимки не е наличен.")
+
+    if st.session_state.yolo_result:
+        st.info(st.session_state.yolo_result)
+
+else:
+    # Снимката е премахната — нулираме
+    st.session_state.temp_photo_filename = None
+    st.session_state.yolo_result = None
 
 # ---------------------------------------------------------------------------
 # Чат вход
@@ -152,17 +161,14 @@ if prompt := st.chat_input("Напиши съобщение..."):
     with st.chat_message("assistant"):
         with st.spinner("Обработвам..."):
             try:
-                # Ако има YOLOv11 резултат — добавяме го към prompt-а
-                # Claude получава текстовия резултат вместо да анализира снимката сам
-                enhanced_prompt = prompt
-                if yolo_result:
+                if st.session_state.yolo_result:
+                    # YOLOv11 резултатът се подава на Claude като текст
                     enhanced_prompt = (
                         f"{prompt}\n\n"
-                        f"[{yolo_result}]\n"
-                        f"Използвай горния YOLOv11 анализ като основа и дай агрономска интерпретация, "
-                        f"препоръка за действие и запиши наблюдението."
+                        f"[{st.session_state.yolo_result}]\n"
+                        f"Използвай горния YOLOv11 анализ като основа и дай агрономска "
+                        f"интерпретация и препоръка за действие."
                     )
-                    # Не подаваме снимката на Claude — YOLOv11 вече я е анализирал
                     messages_to_send = st.session_state.messages[:-1] + [
                         {"role": "user", "content": enhanced_prompt}
                     ]
@@ -170,15 +176,15 @@ if prompt := st.chat_input("Напиши съобщение..."):
                         messages_to_send,
                         image_data=None,
                         force_model=MODEL_HAIKU,
-                        temp_photo_filename=temp_photo_filename,
+                        temp_photo_filename=st.session_state.temp_photo_filename,
                     )
                 else:
-                    # Без YOLOv11 — само текстов въпрос, без анализ на снимка
+                    # Текстов въпрос без снимка
                     response, used_model = chat(
                         st.session_state.messages,
                         image_data=None,
                         force_model=MODEL_HAIKU,
-                        temp_photo_filename=temp_photo_filename,
+                        temp_photo_filename=None,
                     )
 
                 st.markdown(response)
@@ -196,5 +202,15 @@ if prompt := st.chat_input("Напиши съобщение..."):
                     st.error("Виж черния прозорец на терминала за повече детайли.")
 
     if success:
+        # Нулираме снимката САМО ако агентът я е архивирал
+        # (временният файл вече не е в 07_Photos/{year}/)
+        if st.session_state.temp_photo_filename:
+            temp_path = (
+                PHOTOS_BASE_PATH
+                / str(date.today().year)
+                / st.session_state.temp_photo_filename
+            )
+            if not temp_path.exists():
+                st.session_state.temp_photo_filename = None
+                st.session_state.yolo_result = None
         st.rerun()
-                                                                                                                                                                    
