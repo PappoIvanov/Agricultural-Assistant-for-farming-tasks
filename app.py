@@ -18,19 +18,29 @@ st.set_page_config(
 st.title("🌹 Агро Асистент — Маслодайна Роза")
 
 with st.sidebar:
-    st.header("Настройки")
-    model_choice = st.radio(
-        "Модел",
-        options=["Авто", "Haiku (бърз)", "Sonnet (прецизен)"],
-        index=0,
-        help="Авто — изборът се прави автоматично според заявката.",
-    )
+    st.header("Models which the agent uses")
 
+    st.markdown("**Снимки:**")
+    if MODEL_PATH.exists():
+        st.success("YOLOv11 — локален анализ")
+        st.caption("Болестите се засичат локално. Claude Haiku дава агрономска препоръка.")
+    else:
+        st.warning("YOLOv11 моделът не е намерен")
+
+    st.markdown("**Текстови въпроси:**")
+    st.info("Claude Haiku")
+    st.caption("Бърз и евтин модел за всички текстови заявки.")
+
+    st.divider()
+    st.caption("Моделът се избира автоматично. Не е нужна ръчна настройка.")
+
+# Запазваме _FORCE_MODEL за съвместимост с chat() функцията
 _FORCE_MODEL = {
     "Авто": None,
     "Haiku (бърз)": MODEL_HAIKU,
     "Sonnet (прецизен)": MODEL_SONNET,
 }
+model_choice = "Авто"
 
 # ---------------------------------------------------------------------------
 # YOLOv11 — локален анализ на снимки
@@ -119,14 +129,14 @@ if uploaded_file:
     except Exception as e:
         st.warning(f"Снимката не може да се запази временно: {e}")
 
-    # YOLOv11 локален анализ
+    # YOLOv11 локален анализ — само ако моделът е наличен
     if MODEL_PATH.exists():
         with st.spinner("YOLOv11 анализира снимката..."):
             yolo_result = _yolo_analyze(image_data["base64"], uploaded_file.type)
         if yolo_result:
             st.info(yolo_result)
     else:
-        st.caption("ℹ️ YOLOv11 моделът не е намерен — Claude ще анализира снимката директно.")
+        st.error("YOLOv11 моделът не е намерен. Анализът на снимки не е наличен.")
 
 # ---------------------------------------------------------------------------
 # Чат вход
@@ -162,11 +172,11 @@ if prompt := st.chat_input("Напиши съобщение..."):
                         temp_photo_filename=temp_photo_filename,
                     )
                 else:
-                    # Без YOLOv11 — Claude анализира снимката директно (Sonnet)
+                    # Без YOLOv11 — само текстов въпрос, без анализ на снимка
                     response, used_model = chat(
                         st.session_state.messages,
-                        image_data=image_data,
-                        force_model=_FORCE_MODEL[model_choice],
+                        image_data=None,
+                        force_model=MODEL_HAIKU,
                         temp_photo_filename=temp_photo_filename,
                     )
 
@@ -186,3 +196,4 @@ if prompt := st.chat_input("Напиши съобщение..."):
 
     if success:
         st.rerun()
+                                                                                                                                                                    
