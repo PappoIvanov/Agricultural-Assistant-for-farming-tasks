@@ -197,4 +197,4 @@ if prompt := st.chat_input("Напиши съобщение..."):
 
     if success:
         st.rerun()
-                                                                                                                                                                           
+                                                                                                                                                                    
