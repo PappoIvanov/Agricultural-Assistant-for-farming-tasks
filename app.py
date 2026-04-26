@@ -1,17 +1,43 @@
 import os
+import re
 import tempfile
 import streamlit as st
 import base64
 from datetime import date
 from pathlib import Path
 from agent import chat, MODEL_HAIKU, MODEL_SONNET
-from tools import save_temp_photo, PHOTOS_BASE_PATH
+from tools import save_temp_photo, save_photo_archive, PHOTOS_BASE_PATH
 
 # Увери се, че работната директория е папката на проекта
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 # Път до YOLOv11 модела — дефиниран преди всичко друго
 MODEL_PATH = Path("08_AI_Model/models/trained/best_v1.pt")
+
+
+def _extract_parcel(text: str) -> str | None:
+    """Извлича 'Парцел 1' или 'Парцел 2' от текст на потребителя."""
+    m = re.search(r'парцел\s*([12])', text.lower())
+    return f"Парцел {m.group(1)}" if m else None
+
+
+def _category_from_yolo(yolo_result: str) -> str:
+    """Определя категорията от текстовия резултат на YOLOv11.
+    Текущи класове: Black Spot / Downy Mildew / Powdery Mildew → diseases; Normal → healthy.
+    """
+    if not yolo_result or "Не са открити" in yolo_result:
+        return "healthy"
+    text_lower = yolo_result.lower()
+    if any(c in text_lower for c in ["black spot", "downy mildew", "powdery mildew"]):
+        return "diseases"
+    if any(c in text_lower for c in ["pest", "aphid", "spider mite", "insect"]):
+        return "pests"
+    if any(c in text_lower for c in ["weed", "плевел"]):
+        return "weeds"
+    if "normal" in text_lower:
+        return "healthy"
+    return "diseases"
+
 
 st.set_page_config(
     page_title="Агро Асистент — Маслодайна Роза",
@@ -42,6 +68,15 @@ with st.sidebar:
     st.divider()
     st.caption("Моделът се избира автоматично.")
 
+    # Debug панел
+    with st.expander("Debug — текущо състояние"):
+        st.json({
+            "temp_photo_filename": st.session_state.get("temp_photo_filename"),
+            "parcel_name":         st.session_state.get("parcel_name"),
+            "yolo_result":         st.session_state.get("yolo_result"),
+            "messages_count":      len(st.session_state.get("messages", [])),
+        })
+
 # ---------------------------------------------------------------------------
 # Session state — запазва данните между rerun-ите
 # ---------------------------------------------------------------------------
@@ -52,8 +87,8 @@ if "temp_photo_filename" not in st.session_state:
     st.session_state.temp_photo_filename = None
 if "yolo_result" not in st.session_state:
     st.session_state.yolo_result = None
-if "parcel_question_shown" not in st.session_state:
-    st.session_state.parcel_question_shown = False
+if "parcel_name" not in st.session_state:
+    st.session_state.parcel_name = None
 
 # ---------------------------------------------------------------------------
 # YOLOv11 — локален анализ на снимки
@@ -108,7 +143,7 @@ for msg in st.session_state.messages:
         st.markdown(msg["content"])
 
 # ---------------------------------------------------------------------------
-# Upload на снимка — над чат полето, само показва снимката
+# Upload на снимка
 # ---------------------------------------------------------------------------
 
 uploaded_file = st.file_uploader(
@@ -125,13 +160,13 @@ if uploaded_file:
     }
     st.image(uploaded_file, width=300)
 
-    # Записваме снимката временно и пускаме YOLOv11 само веднъж
+    # Записваме снимката временно и пускаме YOLOv11 само веднъж при ново качване
     if st.session_state.temp_photo_filename is None:
+        st.session_state.parcel_name = None  # нова снимка → нулираме парцела
         try:
             st.session_state.temp_photo_filename = save_temp_photo(
                 image_data["base64"], uploaded_file.type
             )
-            st.session_state.parcel_question_shown = False  # нова снимка → нулираме флага
         except Exception as e:
             st.warning(f"Снимката не може да се запази временно: {e}")
 
@@ -146,32 +181,15 @@ if uploaded_file:
     if st.session_state.yolo_result:
         st.info(st.session_state.yolo_result)
 
-    # Автоматично питане за парцела — само веднъж при ново качване
-    if st.session_state.temp_photo_filename and not st.session_state.parcel_question_shown:
-        auto_user_msg = "Качена е нова снимка за анализ."
-        messages_for_auto = st.session_state.messages + [
-            {"role": "user", "content": auto_user_msg}
-        ]
-        with st.spinner("..."):
-            try:
-                response, _ = chat(
-                    messages_for_auto,
-                    image_data=None,
-                    force_model=MODEL_HAIKU,
-                    temp_photo_filename=st.session_state.temp_photo_filename,
-                )
-                st.session_state.messages.append({"role": "user", "content": auto_user_msg})
-                st.session_state.messages.append({"role": "assistant", "content": response})
-                st.session_state.parcel_question_shown = True
-                st.rerun()
-            except Exception as e:
-                st.error(f"Грешка: {e}")
+    # Питане за парцела — показва се докато не е посочен
+    if st.session_state.temp_photo_filename and st.session_state.parcel_name is None:
+        st.warning("Снимката от кой парцел е — Парцел 1 или Парцел 2?")
 
 else:
     # Снимката е премахната — нулираме
     st.session_state.temp_photo_filename = None
     st.session_state.yolo_result = None
-    st.session_state.parcel_question_shown = False
+    st.session_state.parcel_name = None
 
 # ---------------------------------------------------------------------------
 # Чат вход
@@ -227,8 +245,29 @@ if prompt := st.chat_input("Напиши съобщение..."):
                     st.error("Виж черния прозорец на терминала за повече детайли.")
 
     if success:
-        # Нулираме снимката САМО ако агентът я е архивирал
-        # (временният файл вече не е в 07_Photos/{year}/)
+        # Извличаме парцела от съобщението и го запазваме
+        detected_parcel = _extract_parcel(prompt)
+        if detected_parcel:
+            st.session_state.parcel_name = detected_parcel
+
+        # Fallback архивиране — ако агентът не е извикал save_photo_archive
+        if st.session_state.temp_photo_filename and st.session_state.parcel_name:
+            temp_path = (
+                PHOTOS_BASE_PATH
+                / str(date.today().year)
+                / st.session_state.temp_photo_filename
+            )
+            if temp_path.exists():
+                category = _category_from_yolo(st.session_state.yolo_result or "")
+                result = save_photo_archive(
+                    st.session_state.temp_photo_filename,
+                    st.session_state.parcel_name,
+                    category,
+                )
+                if result.get("status") == "ok":
+                    st.toast(f"Снимката е запазена → {category}/{date.today().year}/{result['saved_as']}")
+
+        # Нулираме след успешно архивиране
         if st.session_state.temp_photo_filename:
             temp_path = (
                 PHOTOS_BASE_PATH
@@ -238,4 +277,5 @@ if prompt := st.chat_input("Напиши съобщение..."):
             if not temp_path.exists():
                 st.session_state.temp_photo_filename = None
                 st.session_state.yolo_result = None
+                st.session_state.parcel_name = None
         st.rerun()
