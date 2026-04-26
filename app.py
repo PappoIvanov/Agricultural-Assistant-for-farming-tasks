@@ -9,6 +9,9 @@ from tools import save_temp_photo
 # Увери се, че работната директория е папката на проекта
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
+# Път до YOLOv11 модела — дефиниран преди всичко друго
+MODEL_PATH = Path("08_AI_Model/models/trained/best_v1.pt")
+
 st.set_page_config(
     page_title="Агро Асистент — Маслодайна Роза",
     page_icon="🌹",
@@ -45,8 +48,6 @@ model_choice = "Авто"
 # ---------------------------------------------------------------------------
 # YOLOv11 — локален анализ на снимки
 # ---------------------------------------------------------------------------
-
-MODEL_PATH = Path("08_AI_Model/models/trained/best_v1.pt")
 
 def _yolo_analyze(image_b64: str, media_type: str) -> str | None:
     """Анализира снимката с YOLOv11 локално.
@@ -196,4 +197,4 @@ if prompt := st.chat_input("Напиши съобщение..."):
 
     if success:
         st.rerun()
-                                                                                                                                                                    
+                                                                                                                                                                           
