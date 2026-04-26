@@ -432,7 +432,16 @@ def chat(
             {"type": "text", "text": last["content"] + photo_context},
         ]
     else:
-        content = last["content"]
+        if temp_photo_filename:
+            content = (
+                last["content"] +
+                f"\n\n[СИСТЕМЕН КОНТЕКСТ: Снимката е временно запазена като: {temp_photo_filename}. "
+                f"Това е снимка от полето анализирана с YOLOv11. "
+                f"Ако не знаеш от кой парцел е — попитай. "
+                f"След като знаеш парцела, извикай save_photo_archive('{temp_photo_filename}', parcel_name, category).]"
+            )
+        else:
+            content = last["content"]
 
     api_messages.append({"role": "user", "content": content})
 
