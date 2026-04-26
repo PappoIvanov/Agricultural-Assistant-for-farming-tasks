@@ -550,14 +550,21 @@ def save_photo_archive(temp_filename: str, parcel_name: str, category: str = "he
     parcel = PARCELS.get(parcel_name, {})
     cadastral_id = parcel.get("cadastral_id", "")
 
-    stem = temp_filename.replace("temp_", "").rsplit(".", 1)[0]
-    ext  = temp_filename.rsplit(".", 1)[-1]
+    ext          = temp_filename.rsplit(".", 1)[-1]
     parcel_short = parcel_name.replace(" ", "_")
+    today        = date.today().strftime("%Y-%m-%d")
 
     if cadastral_id:
-        new_name = f"{parcel_short}_{cadastral_id}_{stem}.{ext}"
+        base_name = f"{parcel_short}_{cadastral_id}_{today}"
     else:
-        new_name = f"{parcel_short}_{stem}.{ext}"
+        base_name = f"{parcel_short}_{today}"
+
+    new_name = f"{base_name}.{ext}"
+    if (dest_dir / new_name).exists():
+        counter = 2
+        while (dest_dir / f"{base_name}_{counter}.{ext}").exists():
+            counter += 1
+        new_name = f"{base_name}_{counter}.{ext}"
 
     new_path = dest_dir / new_name
     temp_path.rename(new_path)

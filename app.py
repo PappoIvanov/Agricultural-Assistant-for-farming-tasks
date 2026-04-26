@@ -52,6 +52,8 @@ if "temp_photo_filename" not in st.session_state:
     st.session_state.temp_photo_filename = None
 if "yolo_result" not in st.session_state:
     st.session_state.yolo_result = None
+if "parcel_question_shown" not in st.session_state:
+    st.session_state.parcel_question_shown = False
 
 # ---------------------------------------------------------------------------
 # YOLOv11 — локален анализ на снимки
@@ -129,6 +131,7 @@ if uploaded_file:
             st.session_state.temp_photo_filename = save_temp_photo(
                 image_data["base64"], uploaded_file.type
             )
+            st.session_state.parcel_question_shown = False  # нова снимка → нулираме флага
         except Exception as e:
             st.warning(f"Снимката не може да се запази временно: {e}")
 
@@ -143,10 +146,32 @@ if uploaded_file:
     if st.session_state.yolo_result:
         st.info(st.session_state.yolo_result)
 
+    # Автоматично питане за парцела — само веднъж при ново качване
+    if st.session_state.temp_photo_filename and not st.session_state.parcel_question_shown:
+        auto_user_msg = "Качена е нова снимка за анализ."
+        messages_for_auto = st.session_state.messages + [
+            {"role": "user", "content": auto_user_msg}
+        ]
+        with st.spinner("..."):
+            try:
+                response, _ = chat(
+                    messages_for_auto,
+                    image_data=None,
+                    force_model=MODEL_HAIKU,
+                    temp_photo_filename=st.session_state.temp_photo_filename,
+                )
+                st.session_state.messages.append({"role": "user", "content": auto_user_msg})
+                st.session_state.messages.append({"role": "assistant", "content": response})
+                st.session_state.parcel_question_shown = True
+                st.rerun()
+            except Exception as e:
+                st.error(f"Грешка: {e}")
+
 else:
     # Снимката е премахната — нулираме
     st.session_state.temp_photo_filename = None
     st.session_state.yolo_result = None
+    st.session_state.parcel_question_shown = False
 
 # ---------------------------------------------------------------------------
 # Чат вход
